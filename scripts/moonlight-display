@@ -6,6 +6,7 @@
 # (.edp), one for the virtual display (.dp2). With a missing or revoked token GNOME opens a permission
 # dialog and the stream hangs until someone answers it.
 CONNECTOR=DP-2   # must match CONNECTOR in virtual-display.sh
+GRACE=120        # seconds disconnected (without Quit) before giving the laptop back; reconnecting resets it
 D=~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine
 T=$D/portal_token
 
@@ -21,11 +22,24 @@ case "$1" in
        # GNOME goes back to the laptop-only layout by itself.
        cp "$T.dp2" "$T" && sudo -n /usr/local/sbin/virtual-display.sh on && sleep 2 \
          && gdctl set --logical-monitor --primary --monitor "$CONNECTOR" || exit 1
-       # Safety net: if Sunshine isn't capturing the virtual display within 20 s (e.g. a permission dialog
-       # opened on a screen nobody can see), go back to the laptop.
-       systemd-run --user --quiet --collect --on-active=20 --timer-property=AccuracySec=1s \
-         "$0" check "$(wc -l < "$D/sunshine.log")" ;;
-  check) tail -n +"$2" "$D/sunshine.log" | grep -q "Found stream for display id/name: '$CONNECTOR'" || "$0" off ;;
+       # Safety net for the whole session, as a transient service (systemd cleans up tail when it exits).
+       systemd-run --user --quiet --collect "$0" watch "$(wc -l < "$D/sunshine.log")" ;;
+  watch) # $2 = log line where this session starts. Gives the laptop back when:
+         # - no capture of the virtual display within 20 s (e.g. a permission dialog nobody can see);
+         # - the client disconnected without Quit: Sunshine runs undo only on Quit, so nobody else would.
+    start=$SECONDS found= gone=
+    while :; do
+      if IFS= read -r -t 5 line; then
+        case $line in
+          *"Found stream for display id/name: '$CONNECTOR'"*) found=1 ;;
+          *"CLIENT DISCONNECTED"*) gone=$SECONDS ;;
+          *"CLIENT CONNECTED"*)    gone= ;;
+        esac
+      fi
+      grep -q '^connected' /sys/class/drm/card*-"$CONNECTOR"/status || exit 0   # off already ran (Quit)
+      [[ -z $found && $((SECONDS-start)) -ge 20 ]] && { "$0" off; exit; }
+      [[ -n $gone && $((SECONDS-gone)) -ge $GRACE ]] && { "$0" off; exit; }
+    done < <(tail -n +"$2" -F "$D/sunshine.log" 2>/dev/null) ;;
   off) save_edp; cp "$T.edp" "$T"; sudo -n /usr/local/sbin/virtual-display.sh off ;;
   *)   echo "usage: $0 on|off" >&2; exit 1 ;;
 esac

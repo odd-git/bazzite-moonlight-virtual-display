@@ -26,7 +26,7 @@ Nothing is added at boot.
      1. load the portal token for the virtual display;
      2. create the display;
      3. use `gdctl` to leave **only** the virtual display active;
-     4. start a 20-second safety check.
+     4. start a watcher for the rest of the session. It gives the laptop back if the capture doesn't start within 20 s, or if the client disconnects **without Quit** and doesn't reconnect within `GRACE` (2 min).
    - **`off`** runs on Quit: load the laptop token and remove the virtual display. GNOME restores the laptop layout by itself.
 3. A systemd drop-in runs `off` every time Sunshine starts, so a reboot mid-stream always starts clean.
 
@@ -117,7 +117,9 @@ systemctl --user restart sunshine    # the drop-in loads the laptop token
 
 1. Settings → Resolution: add a custom **2856×1280** at **60 FPS**.
 2. Launch **Steam Big Picture**.
-3. Use **Quit** (not just back) to end the session and bring the laptop back.
+3. Use **Quit** to end the session and bring the laptop back right away. Quit is in the in-stream menu, or long-press the app → Quit session.
+4. A plain disconnect (back button, Wi-Fi drop) leaves the app running, so it can be resumed. The laptop comes back after `GRACE` (2 minutes).
+5. If you reconnect **after** that, Sunshine resumes the app without running `do`. You get the laptop panel with black bars: Quit and launch again.
 
 ## Pitfalls found along the way
 
@@ -127,7 +129,8 @@ systemctl --user restart sunshine    # the drop-in loads the laptop token
   - A token restores only while its monitors exist.
   - A missing or revoked token makes GNOME open a permission dialog, and Sunshine waits on it indefinitely.
   - If that dialog opens on a monitor nobody sees (the laptop is off during the stream), the machine looks frozen.
-  - Hence the two tokens, the refusal to run `on` without `.dp2`, and the 20-second safety check. The check uses `AccuracySec=1s`, because systemd timers otherwise fire up to a minute late.
+  - Hence the two tokens, the refusal to run `on` without `.dp2`, and the 20-second check in the watcher.
+- **Disconnect is not Quit.** Sunshine runs `undo` only when the app is terminated. On a disconnect it keeps the app alive for resuming, so with the laptop panel turned off the screen stayed black until a forced reboot. The watcher follows `CLIENT DISCONNECTED` / `CLIENT CONNECTED` in `sunshine.log` and runs `off` after `GRACE`.
 - **`output_name` caused the laptop token to be revoked.** With `output_name = DP-2`, every probe on the laptop logged `no matching stream was found for: 'DP-2'`, and the laptop token kept getting revoked after a restart or two. Removing `output_name` stopped it. This is observed behavior, not proven from source.
 - **With the laptop panel left on during the stream, game windows split across both screens.** This happens with XWayland/Proton titles and mixed scaling. Keeping only the virtual display active fixes it, and Steam then has only one screen to open on.
 - **`gdctl set` without `-P` is temporary.** When the virtual display disappears, GNOME re-applies the saved laptop-only layout, top bar included.
