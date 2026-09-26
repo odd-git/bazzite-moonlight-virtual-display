@@ -1,0 +1,5 @@
+# ~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/sunshine.conf
+# Replace /home/YOUR_USER with your home (flatpak-spawn needs an absolute path; ~ is not expanded).
+# Do NOT set output_name: during the stream the virtual display is the only active monitor, so Sunshine
+# picks it anyway. With output_name set, the laptop portal token kept getting revoked.
+global_prep_cmd = [{"do":"flatpak-spawn --host /home/YOUR_USER/.local/bin/moonlight-display on","undo":"flatpak-spawn --host /home/YOUR_USER/.local/bin/moonlight-display off"}]

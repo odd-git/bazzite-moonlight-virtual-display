@@ -1,0 +1,2 @@
+# /etc/sudoers.d/virtual-display — replace YOUR_USER. Allows only these two exact commands without a password.
+YOUR_USER ALL=(root) NOPASSWD: /usr/local/sbin/virtual-display.sh on, /usr/local/sbin/virtual-display.sh off

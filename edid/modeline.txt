@@ -1,0 +1,4 @@
+# Pixel 9 Pro at "Max" resolution, landscape, 60 Hz (CVT timings).
+# ratio=16:9 is required: edid-generator only knows 16:10, 16:9, 4:3 and 5:4 and aborts on anything else.
+# It only sets the declared aspect byte; the real mode comes from the detailed timing (2856x1280).
+Modeline "2856x1280" 307.60  2856 3048 3360 3864  1280 1283 1293 1328 -hsync +vsync ratio=16:9
