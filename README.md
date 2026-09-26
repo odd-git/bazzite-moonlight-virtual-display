@@ -13,7 +13,7 @@ Nothing is added at boot.
 
 | | |
 |---|---|
-| OS | Bazzite GNOME (Fedora 44), Wayland |
+| OS | Bazzite GNOME 44.20260915.0 (`bazzite-gnome`), Wayland |
 | GPU | AMD Radeon 780M (amdgpu) |
 | Host | Sunshine **flatpak** (`dev.lizardbyte.app.Sunshine` 2026.914) |
 | Client | Moonlight on a Google Pixel 9 Pro, "Max" resolution: **2856×1280 @ 60 Hz** |
