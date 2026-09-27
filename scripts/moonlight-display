@@ -1,11 +1,12 @@
 #!/bin/bash
 # Virtual display for Moonlight, run by Sunshine (global_prep_cmd) and at Sunshine start (systemd drop-in).
-# Usage: moonlight-display on|off
+# Usage: moonlight-display on|off|grant
 #
 # The GNOME portal permission is tied to the monitors being shared: one token for the laptop panel only
 # (.edp), one for the virtual display (.dp2). With a missing or revoked token GNOME opens a permission
 # dialog and the stream hangs until someone answers it.
 CONNECTOR=DP-2   # must match CONNECTOR in virtual-display.sh
+LAPTOP=eDP-1     # built-in panel
 GRACE=120        # seconds disconnected (without Quit) before giving the laptop back; reconnecting resets it
 D=~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine
 T=$D/portal_token
@@ -40,6 +41,27 @@ case "$1" in
       [[ -z $found && $((SECONDS-start)) -ge 20 ]] && { "$0" off; exit; }
       [[ -n $gone && $((SECONDS-gone)) -ge $GRACE ]] && { "$0" off; exit; }
     done < <(tail -n +"$2" -F "$D/sunshine.log" 2>/dev/null) ;;
-  off) save_edp; cp "$T.edp" "$T"; sudo -n /usr/local/sbin/virtual-display.sh off ;;
-  *)   echo "usage: $0 on|off" >&2; exit 1 ;;
+  off) [[ -n $MOONLIGHT_GRANT ]] && exit 0   # grant in progress: leave the screens and tokens alone
+       save_edp; cp "$T.edp" "$T"; sudo -n /usr/local/sbin/virtual-display.sh off ;;
+  grant) # Grant both portal permissions again when GNOME revoked them (Moonlight shows "No video" or a
+         # permission dialog pops up). Each dialog opens on the laptop panel: accept it.
+    systemctl --user set-environment MOONLIGHT_GRANT=1   # skip the reset in ExecStartPre while granting
+    for g in edp dp2; do
+      systemctl --user stop sunshine
+      rm -f "$T" "$T.$g"
+      if [[ $g = dp2 ]]; then
+        # The saved layout makes the virtual display primary, and GNOME opens the dialog there.
+        sudo -n /usr/local/sbin/virtual-display.sh on && sleep 2 && gdctl set \
+          --logical-monitor --primary --monitor "$LAPTOP" --logical-monitor --monitor "$CONNECTOR" --right-of "$LAPTOP"
+      fi
+      echo "Accept the GNOME dialog on the laptop ($g)..."
+      systemctl --user start sunshine
+      for _ in $(seq 120); do [[ -f $T ]] && break; sleep 1; done
+      [[ -f $T ]] || { echo "no permission granted for $g" >&2; break; }
+      cp "$T" "$T.$g"
+    done
+    systemctl --user unset-environment MOONLIGHT_GRANT
+    systemctl --user restart sunshine   # normal start: virtual display off, laptop token
+    [[ -f $T.edp && -f $T.dp2 ]] && echo "OK: both permissions granted" ;;
+  *)   echo "usage: $0 on|off|grant" >&2; exit 1 ;;
 esac

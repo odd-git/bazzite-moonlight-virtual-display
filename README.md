@@ -91,27 +91,19 @@ In `~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/`:
 - `sunshine.conf`: see [`config/sunshine.conf.example`](config/sunshine.conf.example). Use the absolute path, and **do not set `output_name`**.
 - `apps.json`: add the "Steam Big Picture" entry from [`config/apps.json.example`](config/apps.json.example).
 
-### 5. One-time portal permissions (two tokens)
+### 5. Portal permissions (two tokens)
 
-The flatpak captures the screen through the GNOME portal. The portal remembers **which monitors** you allowed, so two tokens are needed. Both dialogs must be accepted **on the laptop screen**, where you can see them.
+The flatpak captures the screen through the GNOME portal. The portal remembers **which monitors** you allowed, so two tokens are needed: one for the laptop panel alone, one for the virtual display. Grant both with:
 
 ```bash
-S=~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine
-
-# a) laptop only
-sudo -n /usr/local/sbin/virtual-display.sh off
-rm -f $S/portal_token; systemctl --user restart sunshine
-#    -> accept the GNOME dialog ("Built-in display"), then:
-cp $S/portal_token $S/portal_token.edp
-
-# b) virtual display (keep the laptop on so the dialog is visible)
-sudo -n /usr/local/sbin/virtual-display.sh on
-rm -f $S/portal_token; systemctl --user restart sunshine
-#    -> accept the GNOME dialog, then:
-cp $S/portal_token $S/portal_token.dp2
-sudo -n /usr/local/sbin/virtual-display.sh off
-systemctl --user restart sunshine    # the drop-in loads the laptop token
+~/.local/bin/moonlight-display grant
 ```
+
+1. Sunshine restarts and GNOME shows a dialog with **only the built-in display**: accept it.
+2. The virtual display turns on as a **secondary** screen, with the laptop kept primary so the dialog is visible. A second dialog appears: pick the **virtual display** and accept it.
+3. The script saves the two tokens as `portal_token.edp` / `portal_token.dp2`, turns the virtual display off and restarts Sunshine normally.
+
+**Run it again whenever GNOME revokes the permissions.** It happened several times in testing, including after a system update. You notice because a permission dialog shows up, or Moonlight fails with *No video received from host* or a generic firewall error.
 
 ### 6. Moonlight
 
@@ -142,7 +134,7 @@ If the screen stays black:
 - press `Super+P` to cycle display modes;
 - or run `~/.local/bin/moonlight-display off`, e.g. over SSH.
 
-If Moonlight fails with a generic "check your firewall" error after a reboot, check `sunshine.log` for `response code: 1` or `Fatal`. A portal dialog was probably dismissed. Accept it (step 5a) and copy the new token to `portal_token.edp`. The script also picks up a renewed laptop token by itself on the next `on`/`off`.
+If Moonlight fails with *No video received from host* or a generic "check your firewall" error, GNOME has most likely revoked a portal permission. The journal shows `xdg-desktop-portal-gnome: Failed to associate portal window` and `sunshine.log` shows `response code: 1`, `Fatal` or a session that hangs. Run `~/.local/bin/moonlight-display grant` (step 5).
 
 ## Credits
 
