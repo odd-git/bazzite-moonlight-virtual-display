@@ -2,9 +2,9 @@
 
 Stream a Bazzite GNOME laptop to an Android phone with Sunshine/Moonlight in **true fullscreen**: no black bars, no scaling.
 
-A virtual display at the phone's exact resolution **exists only while Moonlight is connected**:
+A virtual display at the connecting client's own resolution **exists only while Moonlight is connected**:
 
-- **Connect:** the virtual display is created, the laptop panel turns off, and Steam Big Picture or any game opens on the phone.
+- **Connect:** the virtual display is created at the resolution the client asked for (phone, projector, whatever Moonlight reports), the laptop panel turns off, and Steam Big Picture or any game opens there.
 - **Quit:** everything goes back to the laptop screen.
 
 Nothing is added at boot.
@@ -16,7 +16,7 @@ Nothing is added at boot.
 | OS | Bazzite GNOME 44.20260915.0 (`bazzite-gnome`), Wayland |
 | GPU | AMD Radeon 780M (amdgpu) |
 | Host | Sunshine **flatpak** (`dev.lizardbyte.app.Sunshine` 2026.914) |
-| Client | Moonlight on a Google Pixel 9 Pro, "Max" resolution: **2856×1280 @ 60 Hz** |
+| Clients | Moonlight on a Google Pixel 9 Pro (**2856×1280 @ 60 Hz**, "Max" resolution) and on an XGIMI Horizon S20 Max projector (**3840×2160 @ 60 Hz**) |
 
 ## How it works
 
@@ -25,7 +25,7 @@ Nothing is added at boot.
    - **`on`** runs when a client launches an app:
      1. load the portal token for the virtual display;
      2. create the display;
-     3. use `gdctl` to leave **only** the virtual display active;
+     3. use `gdctl` to leave **only** the virtual display active, at the mode matching the connecting client's resolution when the EDID has one (see [step 6](#6-multiple-clientsresolutions-optional));
      4. start a watcher for the rest of the session. It gives the laptop back if the capture doesn't start within 20 s, or if the client disconnects **without Quit** and doesn't reconnect within `GRACE` (2 min).
    - **`off`** runs on Quit: load the laptop token and remove the virtual display. GNOME restores the laptop layout by itself.
 3. A systemd drop-in runs `off` every time Sunshine starts, so a reboot mid-stream always starts clean.
@@ -47,7 +47,14 @@ Pick a connector that shows `disconnected`. Note the directory that contains it.
 
 ### 2. EDID
 
-For a Pixel 9 Pro at 2856×1280@60 you can use [`edid/2856x1280.bin`](edid/2856x1280.bin) directly. For another resolution, build one with [edid-generator](https://github.com/akatrevorjay/edid-generator) inside a distrobox (Bazzite is immutable):
+The virtual display can advertise **several modes at once** — the script later picks whichever one matches the connecting client (see [step 6](#6-multiple-clientsresolutions-optional)). For a Pixel 9 Pro + an XGIMI-style 4K projector, use [`edid/virtual.bin`](edid/virtual.bin) directly: it has both 2856×1280@60 and 3840×2160@60, built from [`edid/2856x1280.bin`](edid/2856x1280.bin) with [`edid/add-4k.py`](edid/add-4k.py) (see its docstring to add a different second mode). Point `EDID` in `scripts/virtual-display.sh` at it:
+
+```bash
+sudo mkdir -p /usr/local/lib/firmware
+sudo cp edid/virtual.bin /usr/local/lib/firmware/
+```
+
+For a single resolution, or a starting point for `add-4k.py`, build one with [edid-generator](https://github.com/akatrevorjay/edid-generator) inside a distrobox (Bazzite is immutable):
 
 ```bash
 distrobox enter ubuntu
@@ -105,9 +112,13 @@ The flatpak captures the screen through the GNOME portal. The portal remembers *
 
 **Run it again whenever GNOME revokes the permissions.** It happened several times in testing, including after a system update. You notice because a permission dialog shows up, or Moonlight fails with *No video received from host* or a generic firewall error.
 
-### 6. Moonlight
+### 6. Multiple clients/resolutions (optional)
 
-1. Settings → Resolution: add a custom **2856×1280** at **60 FPS**.
+With an EDID that advertises several modes (like `edid/virtual.bin`: phone + 4K), Sunshine tells the host script what the connecting client asked for through `SUNSHINE_CLIENT_WIDTH`/`HEIGHT`/`FPS`, forwarded via `flatpak-spawn --env` in `sunshine.conf.example`. `moonlight-display` picks the closest matching mode automatically — nothing to configure per client. If the client's resolution isn't one of the EDID's modes, it falls back to the EDID's preferred mode (the first one, `2856x1280` here).
+
+### 7. Moonlight
+
+1. Settings → Resolution: add a custom resolution matching the client (**2856×1280** for the phone, **3840×2160** for a 4K projector), at **60 FPS**.
 2. Launch **Steam Big Picture**.
 3. Use **Quit** to end the session and bring the laptop back right away. Quit is in the in-stream menu, or long-press the app → Quit session.
 4. A plain disconnect (back button, Wi-Fi drop) leaves the app running, so it can be resumed. The laptop comes back after `GRACE` (2 minutes).
@@ -126,6 +137,8 @@ The flatpak captures the screen through the GNOME portal. The portal remembers *
 - **`output_name` caused the laptop token to be revoked.** With `output_name = DP-2`, every probe on the laptop logged `no matching stream was found for: 'DP-2'`, and the laptop token kept getting revoked after a restart or two. Removing `output_name` stopped it. This is observed behavior, not proven from source.
 - **With the laptop panel left on during the stream, game windows split across both screens.** This happens with XWayland/Proton titles and mixed scaling. Keeping only the virtual display active fixes it, and Steam then has only one screen to open on.
 - **`gdctl set` without `-P` is temporary.** When the virtual display disappears, GNOME re-applies the saved laptop-only layout, top bar included.
+- **`gdctl set --mode` needs an exact string, decimals included** (e.g. `3840x2160@59.997`, not `@60`). `pick_mode()` in `moonlight-display` looks up `gdctl show --modes` and picks the closest fps for the requested resolution.
+- **`flatpak-spawn --host` does not forward the caller's environment.** `SUNSHINE_CLIENT_WIDTH`/`HEIGHT`/`FPS` exist inside the flatpak sandbox but never reach the host script unless passed explicitly with `--env=`, as in `sunshine.conf.example`.
 
 ## Recovery
 

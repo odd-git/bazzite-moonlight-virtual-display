@@ -15,14 +15,28 @@ T=$D/portal_token
 # (if GNOME revoked it and you granted the permission again, Sunshine saved a new one).
 save_edp() { cmp -s "$T" "$T.dp2" || cp "$T" "$T.edp"; }
 
+# Picks, among the modes the EDID advertises for $CONNECTOR, the one matching WIDTHxHEIGHT with the
+# fps closest to the client's request (gdctl needs an exact "WxH@fps" string, decimals included).
+# Prints nothing if the client's resolution isn't one of the EDID's modes.
+pick_mode() {
+  gdctl show --modes 2>/dev/null | sed -n "/Monitor $CONNECTOR /,/──Preferences/p" \
+    | grep -oE "${1}x${2}@[0-9.]+" \
+    | awk -F@ -v want="$3" 'function abs(x){return x<0?-x:x} {d=abs($2-want); if(best=="" || d<bestd){best=$0; bestd=d}} END{print best}'
+}
+
 case "$1" in
   on)  [[ -f $T.dp2 ]] || { echo "missing $T.dp2: grant the portal permission with $CONNECTOR on first" >&2; exit 1; }
        save_edp
        # Only the virtual display stays on: with the laptop panel next to it, games (XWayland) end up split
        # across both screens. gdctl without -P doesn't save the layout: once the virtual display is gone,
        # GNOME goes back to the laptop-only layout by itself.
-       cp "$T.dp2" "$T" && sudo -n /usr/local/sbin/virtual-display.sh on && sleep 2 \
-         && gdctl set --logical-monitor --primary --monitor "$CONNECTOR" || exit 1
+       cp "$T.dp2" "$T" && sudo -n /usr/local/sbin/virtual-display.sh on && sleep 2 || exit 1
+       # Match the client's requested resolution (e.g. 4K for a projector) when the EDID has that mode;
+       # otherwise gdctl keeps the EDID's preferred mode (2856x1280, the phone).
+       mode=
+       [[ -n $SUNSHINE_CLIENT_WIDTH && -n $SUNSHINE_CLIENT_HEIGHT && -n $SUNSHINE_CLIENT_FPS ]] \
+         && mode=$(pick_mode "$SUNSHINE_CLIENT_WIDTH" "$SUNSHINE_CLIENT_HEIGHT" "$SUNSHINE_CLIENT_FPS")
+       gdctl set --logical-monitor --primary --monitor "$CONNECTOR" ${mode:+--mode "$mode"} || exit 1
        # Safety net for the whole session, as a transient service (systemd cleans up tail when it exits).
        systemd-run --user --quiet --collect "$0" watch "$(wc -l < "$D/sunshine.log")" ;;
   watch) # $2 = log line where this session starts. Gives the laptop back when:

@@ -2,4 +2,6 @@
 # Replace /home/YOUR_USER with your home (flatpak-spawn needs an absolute path; ~ is not expanded).
 # Do NOT set output_name: during the stream the virtual display is the only active monitor, so Sunshine
 # picks it anyway. With output_name set, the laptop portal token kept getting revoked.
-global_prep_cmd = [{"do":"flatpak-spawn --host /home/YOUR_USER/.local/bin/moonlight-display on","undo":"flatpak-spawn --host /home/YOUR_USER/.local/bin/moonlight-display off"}]
+# --env forwards Sunshine's own SUNSHINE_CLIENT_WIDTH/HEIGHT/FPS (the resolution the connecting client
+# asked for) to the host script, which picks the closest mode the EDID advertises for that connector.
+global_prep_cmd = [{"do":"flatpak-spawn --host --env=SUNSHINE_CLIENT_WIDTH=${SUNSHINE_CLIENT_WIDTH} --env=SUNSHINE_CLIENT_HEIGHT=${SUNSHINE_CLIENT_HEIGHT} --env=SUNSHINE_CLIENT_FPS=${SUNSHINE_CLIENT_FPS} /home/YOUR_USER/.local/bin/moonlight-display on","undo":"flatpak-spawn --host /home/YOUR_USER/.local/bin/moonlight-display off"}]
